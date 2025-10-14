@@ -9,40 +9,35 @@ class FineCalculator {
     private const LATE_PENALTY_RATE = 1.2;
     private const GRACE_PERIOD_DAYS = 30;
     
-    /**
-     * Calculate fine amount based on status and issue date
-     */
+    // Calculate fine amount based on status and issue date
     public function calcFine(float $amount, string $dateIssued, FineStatus $status): float {
         // Validate amount is positive
         if ($amount < 0) {
-            throw new InvalidArgumentException('Amount must be a positive number');
+            throw new InvalidArgumentException('Amount must be positive');
         }
         
-        return match ($status) {
+        // Use match expression for status handling
+        return match($status) {
             FineStatus::PAID => $amount,
-            FineStatus::UNPAID, FineStatus::OVERDUE => $this->calculateWithOverdueFee($amount, $dateIssued),
+            FineStatus::UNPAID, FineStatus::OVERDUE => $this->calculateWithLateFee($amount, $dateIssued),
         };
     }
     
-    /**
-     * Calculate fine with late fee if overdue
-     */
-    private function calculateWithOverdueFee(float $amount, string $dateIssued): float {
+    // Calculate fine with late fee if overdue
+    private function calculateWithLateFee(float $amount, string $dateIssued): float {
         try {
-            $issueDate = DateTimeImmutable::createFromFormat('Y-m-d', $dateIssued);
-
-            if (!$issueDate instanceof DateTimeImmutable || !($issueDate && $issueDate->format('Y-m-d') === $dateIssued)) {
-                throw new InvalidArgumentException('Invalid date format');
+            $issueDate = new DateTimeImmutable($dateIssued); // could be null if using a factory that returns null
+            $gracePeriod = self::GRACE_PERIOD_DAYS;
+            $dueDate = $issueDate?->modify('+' . $gracePeriod . ' days'); // nullsafe operator
+            if ($dueDate === null) {
+                throw new InvalidArgumentException('Invalid issue date');
             }
 
-            $dueDate = $issueDate?->modify('+' . self::GRACE_PERIOD_DAYS . ' days');
             $currentDate = new DateTimeImmutable();
-            
-            // Return late fee or original amount
             return $currentDate > $dueDate ? $amount * self::LATE_PENALTY_RATE : $amount;
-                
+
         } catch (Exception $e) {
-            throw new InvalidArgumentException('Invalid date format: '.$e->getMessage());
+            throw new InvalidArgumentException('Invalid date format: ' . $e->getMessage());
         }
     }
 }
