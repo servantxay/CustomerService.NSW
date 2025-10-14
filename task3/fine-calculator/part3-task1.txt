@@ -1,0 +1,101 @@
+You are given a legacy PHP 7.3 snippet (example below):
+
+<?php
+// Legacy fine calculation snippet (PHP 7.3 style)
+
+1	function calcFine($amount, $dateIssued, $status) {
+2		if ($status == 'paid') {
+3			return $amount;
+4		} else {
+5			if (date('Y-m-d') > date('Y-m-d', strtotime($dateIssued. '+30 days'))) {
+6				$amount = $amount * 1.2;
+7			}
+8		}
+9		return $amount;
+10	}
+
+Task:
+1. Identify at least 3 issues or improvements in this code
+
+2. Rewrite the function in modern PHP 8.x style using:
+- Type declarations
+- match expression
+- Nullsafe operator or other 8.x features
+
+
+Answer for Task 1:
+==================
+Issues and improvements in the legacy PHP 7.3 snippet:
+
+1. In Line 2, the legacy code uses == to check $status. Use === instead to avoid unexpected results with 0, false, or null.
+
+2. In Line 5, the code compares dates using strings. It would be better to use DateTimeImmutable (PHP 8.2 style) for clear and safe comparisons.
+
+For example:
+	$issueDate = new DateTimeImmutable($dateIssued); // DateTimeImmutable type ensure the issue date remains unchanged - safer
+	$dueDate = $issueDate->modify("+30 days");
+	$currentDate = new DateTimeImmutable();
+
+	if ($currentDate > $dueDate) { ... }
+
+3. In Line 5, the "30 days" can be declared as a constant for clarity. 
+Otherwise, clear comments would help other developers to identify what is the number of grace period days.
+
+For example:
+	const GRACE_PERIOD_DAYS = 30; // number of days from fine issue date to due date
+	...
+	$dueDate = $issueDate->modify('+'.GRACE_PERIOD_DAYS.' days');
+
+4. In Line 6, "1.2" is a hard-coded mystery number. It should be declared as a constant for clarity.
+
+For example:
+	const LATE_PENALTY_RATE = 1.2; // Late Penalty Rate increase 20% if due date is passed
+	...
+	$amount = $amount * LATE_PENALTY_RATE;
+
+5. In Line 2-7, the "else" block does not cover all paths. The code can be rewritten as:
+
+	const GRACE_PERIOD_DAYS = 30;
+	const LATE_PENALTY_RATE = 1.2; // Late Penalty Rate increase 20% if due date is passed
+
+	// check if fine is paid
+	if ($status == 'paid') {
+		return $amount;
+	}
+
+	// check if fine is overdue, add 20% late penalty fee if overdue
+	$issueDate = new DateTimeImmutable($dateIssued);
+	$dueDate = $issueDate->modify('+'.GRACE_PERIOD_DAYS.' days');
+	$currentDate = new DateTimeImmutable();
+	if ($currentDate > $dueDate) {
+		return $amount * LATE_PENALTY_RATE;
+	}
+
+	return $amount; // fallback to return an amount
+
+6. In Line 1, types of the parameters are not defined in calcFine() function. 
+Defining function parameter and return types can prevent errors.
+
+For example:
+	function calcFine(float $amount, string $dateIssued, string $status): float {
+
+7. The snippet code does not have Error Handling and input validation.
+Negative amounts or invalid dates should throw errors:
+
+For example:
+	if ($amount < 0) {
+		throw new InvalidArgumentException('Amount must be a positive number');
+    	}
+
+	...
+
+	try {
+		...
+		$issueDate = new DateTimeImmutable($dateIssued);
+		...
+	} catch (Exception $e) {
+		throw new InvalidArgumentException('Invalid date format: ' . $e->getMessage());
+	}
+
+8. The code snippet has no comments. Adding comments helps other developers in the team to understand the logic faster.
+
