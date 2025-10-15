@@ -14,9 +14,22 @@ use Doctrine\DBAL\Schema\Table;
  * Supports PostgreSQL (via DATABASE_URL) and falls back to SQLite for local development.
  */
 class Database {
+    /**
+     * @var Connection|null Holds the single database connection instance
+     */
     private static ?Connection $conn = null;
 
-    // Get the database connection.
+    /**
+     * Get the database connection.
+     *
+     * If a connection already exists, it returns the existing instance.
+     * Otherwise, it attempts to create a new connection:
+     *   - First tries PostgreSQL if DATABASE_URL is set.
+     *   - Falls back to local SQLite if PostgreSQL fails or DATABASE_URL is not set.
+     *
+     * @return Connection The Doctrine DBAL connection instance
+     * @throws Exception If there is a failure establishing a database connection
+     */
     public static function getConnection(): Connection {
         if (!self::$conn) {
             $dbUrl = getenv('DATABASE_URL');
@@ -40,7 +53,15 @@ class Database {
         return self::$conn;
     }
 
-    // Initialise the database schema.
+    /**
+     * Initialise the database schema.
+     *
+     * Creates the 'fines' table if it does not already exist.
+     * Ensures backward compatibility by adding new columns if missing.
+     *
+     * @return void
+     * @throws Exception If there is a failure creating the table
+     */
     public static function init(): void {
         $conn = self::getConnection();
         $schemaManager = $conn->createSchemaManager();
@@ -53,7 +74,15 @@ class Database {
         self::createOrUpdateFinesTable($conn, $schema, $schemaManager);
     }
 
-    // create offenders table
+    /**
+     * Create offenders table.
+     *
+     * Creates the 'offenders' table if it does not already exist.
+     * Ensures backward compatibility by adding new columns if missing.
+     *
+     * @return void
+     * @throws Exception If there is a failure creating the table
+     */
     private static function createOffendersTable(Connection $conn, Schema $schema, $schemaManager): void {
         if (!$schemaManager->tablesExist(['offenders'])) {
             $table = $schema->createTable('offenders');
@@ -71,7 +100,15 @@ class Database {
         }
     }
 
-    // create or update fines table
+    /**
+     * Create or update fines table
+     *
+     * Creates the 'fines' table if it does not already exist.
+     * Ensures backward compatibility by adding new columns if missing.
+     *
+     * @return void
+     * @throws Exception If there is a failure creating the table
+     */
     private static function createOrUpdateFinesTable(Connection $conn, Schema $schema, $schemaManager): void {
         if (!$schemaManager->tablesExist(['fines'])) {
             $table = $schema->createTable('fines');
@@ -99,7 +136,15 @@ class Database {
         }
     }
 
-    // ensure backward compatibility for new fields introduced
+    // 
+    /**
+     * Ensure backward compatibility for new fields introduced
+     *
+     * Updates the 'fines' table  with new fields if it does not already exist.
+     *
+     * @return void
+     * @throws Exception If there is a failure updating the table
+     */
     private static function ensureBackwardCompatibility(Connection $conn): void {
         $schemaManager = $conn->createSchemaManager();
         $currentSchema = $schemaManager->introspectSchema();

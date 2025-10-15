@@ -20,8 +20,16 @@ use Doctrine\DBAL\Connection;
  * does not need to be changed when business rules are added or updated.
  */
 class FineBusinessService {
+    /**
+     * Database connection instance
+     *
+     * @var Connection
+     */
     private Connection $conn;
 
+    /**
+     * Business Rules Constants
+     */
     private const FREQUENT_OFFENDER_THRESHOLD = 3;
     private const FREQUENT_OFFENDER_SURCHARGE = 50.00;
     private const GRACE_PERIOD_DAYS = 30;
@@ -29,11 +37,21 @@ class FineBusinessService {
     private const EARLY_PAYMENT_DAYS = 14;
     private const EARLY_PAYMENT_DISCOUNT_RATE = 0.10;
 
+    /**
+     * FineBusinessService constructor.
+     *
+     * @param Connection $conn Doctrine DBAL connection for database operations
+     */
     public function __construct(Connection $conn) {
         $this->conn = $conn;
     }
 
-    // Get count of unpaid fines for a given offender (parameterized query to prevent SQL injection)
+    /**
+     * Helper Function: Queries the database to count the number of unpaid fines for an offender.
+     *
+     * @param int $offenderId The offender's ID.
+     * @return int The count of unpaid fines.
+     */
     protected function getUnpaidFineCount(int $offenderId): int {
         $count = $this->conn->createQueryBuilder()
             ->select('COUNT(id)')
@@ -48,7 +66,13 @@ class FineBusinessService {
         return (int)$count;
     }
 
-    // Apply all business rules to a fine
+    /**
+     * Apply all business rules to a fine.
+     *
+     * @param array<string,mixed> $fineData
+     * @return array<string,mixed> updated fine array (includes business_flags JSON string)
+     * @throws \InvalidArgumentException when business_flags JSON is invalid
+     */
     public function applyBusinessRules(array $fineData): array {
         $fineData = $this->validateFineData($fineData);
 
@@ -100,7 +124,19 @@ class FineBusinessService {
         return $fineData;
     }
 
-    // Normalize business_flags to ensure only known keys
+    /**
+     * Normalizes the business_flags field to include only recognised keys.
+     *
+     * Ensures that the provided business_flags data (either a JSON string or an array)
+     * contains only the expected keys and merges them with default values.
+     * Extra keys are ignored, and missing keys are filled with defaults.
+     *
+     * @param string|array $rawFlags The raw business_flags data as a JSON string or associative array.
+     *
+     * @return array The normalized associative array of business_flags.
+     *
+     * @throws \InvalidArgumentException If the input is neither a valid JSON string nor an array.
+     */
     private function normalizeFlags($rawFlags): array {
         $defaults = [
             'frequent_offender_surcharge_applied' => false,
@@ -123,7 +159,13 @@ class FineBusinessService {
         return array_merge($defaults, $flags);
     }
 
-    // Apply overdue penalty safely
+    /**
+     * Apply 20% overdue penalty if unpaid for > 30 days.
+     *
+     * @param array<string,mixed> $fine
+     * @param array<string,bool>  $flags (passed by reference)
+     * @return array<string,mixed>
+     */
     private function applyOverduePenalty(array $fine, array &$flags): array {
         if ($fine['status'] === FineStatus::UNPAID->value) {
             $dateIssued = new \DateTimeImmutable($fine['date_issued']);
@@ -139,11 +181,20 @@ class FineBusinessService {
         return $fine;
     }
 
-    // Apply frequent offender surcharge safely
+    /**
+     * Apply $50 frequent offender surcharge if offender has 3+ unpaid fines.
+     *
+     * Uses offender_id (recommended) — ensure fines.offender_id exists in DB.
+     *
+     * @param array<string,mixed> $fine
+     * @param array<string,bool>  $flags (passed by reference)
+     * @return array<string,mixed>
+     */
     private function applyFrequentOffenderSurcharge(array $fine, array &$flags): array {
         if (!empty($fine['offender_id'])) {
             $unpaidCount = $this->getUnpaidFineCount((int)$fine['offender_id']);
 
+            // Apply +$50 if offender has more then threshold numbers of unpaid/overdue fines
             if ($unpaidCount >= self::FREQUENT_OFFENDER_THRESHOLD) {
                 $fine['fine_amount'] = round($fine['fine_amount'] + self::FREQUENT_OFFENDER_SURCHARGE, 2);
                 $flags['frequent_offender_surcharge_applied'] = true;
@@ -152,13 +203,20 @@ class FineBusinessService {
         return $fine;
     }
 
-    // Apply early payment discount safely
+    /**
+     * Apply 10% early payment discount if paid within 14 days.
+     *
+     * @param array<string,mixed> $fine
+     * @param array<string,bool>  $flags (passed by reference)
+     * @return array<string,mixed>
+     */
     private function applyEarlyPaymentDiscount(array $fine, array &$flags): array {
         if ($fine['status'] === FineStatus::PAID->value && !empty($fine['date_paid'])) {
             $dateIssued = new \DateTimeImmutable($fine['date_issued']);
             $datePaid = new \DateTimeImmutable($fine['date_paid']);
             $daysDiff = $dateIssued->diff($datePaid)->days;
 
+            // Apply early payment discount rate if the offender has paid off earlier than the early payment threshold 
             if ($daysDiff <= self::EARLY_PAYMENT_DAYS) {
                 $fine['fine_amount'] = max(0, round($fine['fine_amount'] * (1 - self::EARLY_PAYMENT_DISCOUNT_RATE), 2));
                 $flags['early_payment_discount_applied'] = true;
